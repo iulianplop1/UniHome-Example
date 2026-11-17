@@ -1,0 +1,62 @@
+@page "/listings"
+@attribute [StreamRendering]
+@using Presentation.Models
+@using Presentation.Services
+@inject ListingService ListingService
+
+<PageTitle>Listings</PageTitle>
+
+<h1>Listings</h1>
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+else if (listings == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else if (listings.Count == 0)
+{
+    <p>No listings yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var listing in listings)
+        {
+            <tr>
+                <td>@listing.Name</td>
+                <td>@listing.Description</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Listing>? listings;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            listings = await ListingService.GetListingsAsync();
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage = "Cannot load listings, see if application tier is running";
+        }
+    }
+
+}

@@ -1,0 +1,532 @@
+@page "/"
+@rendermode InteractiveServer
+@using System.Text.Json.Nodes
+<PageTitle>UniHome · Find your next home</PageTitle>
+<div class="uh-app">
+    <a class="uh-skip" href="#uh-content">Skip to content</a>
+    <header class="uh-header">
+        <div class="uh-shell uh-header-inner">
+            <button type="button" class="uh-wordmark uh-wordmark-button" @onclick='() => Navigate("browse")' aria-label="UniHome home">
+                <span class="uh-logo"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 10.8 12 4l8.5 6.8V20H3.5v-9.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 20v-5.8h5V20" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></span>UniHome
+            </button>
+            <nav class="uh-nav" aria-label="UniHome workspace">
+                <button type="button" class='@(IsCurrent("browse") || IsCurrent("details") ? "current" : "")' @onclick='() => Navigate("browse")'>Browse homes</button>
+                @if (Session.IsTenant)
+                {
+                    <button type="button" class='@(IsCurrent("rentals") ? "current" : "")' @onclick='() => Navigate("rentals")'>My rentals</button>
+                    <button type="button" class='@(IsCurrent("saved") ? "current" : "")' @onclick='() => Navigate("saved")'>Saved</button>
+                    <button type="button" class='@(IsCurrent("notifications") ? "current" : "")' @onclick='() => Navigate("notifications")'>Notifications</button>
+                }
+                @if (Session.IsLandlord)
+                {
+                    <button type="button" class='@(IsCurrent("manage") ? "current" : "")' @onclick='() => Navigate("manage")'>My listings</button>
+                    <button type="button" class='@(IsCurrent("rentals") ? "current" : "")' @onclick='() => Navigate("rentals")'>Tenancies</button>
+                }
+                @if (Session.SignedIn)
+                {
+                    <button type="button" class='@(IsCurrent("feed") ? "current" : "")' @onclick='() => Navigate("feed")'>Building feed</button>
+                }
+            </nav>
+            <div class="uh-account">
+                @if (Session.SignedIn)
+                {
+                    <span class="uh-badge" title="@Session.Email">@Session.Name · @Nice(Session.Role)</span>
+                    <button type="button" class="uh-button small secondary" @onclick="Logout" disabled="@Busy">Sign out</button>
+                }
+                else
+                {
+                    <button type="button" class="uh-button small secondary" @onclick='() => AuthScreen("signin")'>Sign in</button>
+                    <button type="button" class="uh-button small" @onclick='() => AuthScreen("register")'>Create account</button>
+                }
+            </div>
+        </div>
+    </header>
+    <main class="uh-main uh-shell" id="uh-content" aria-busy="@Busy">
+        @if (Error.Length > 0) { <p class="uh-alert" role="alert">@Error</p> }
+        @if (Success.Length > 0) { <p class="uh-alert success" role="status">@Success</p> }
+        @if (Busy) { <p class="uh-status" role="status">Working…</p> }
+        @if (Screen == "browse")
+        {
+            <div class="uh-hero">
+                <div class="uh-hero-copy">
+                    <p class="uh-kicker">Student housing in Denmark</p>
+                    <h1>Find your next home.</h1>
+                    <p>Explore rooms and apartments, compare their rental periods, and see the full monthly cost before you commit.</p>
+                </div>
+                <div class="uh-hero-art" aria-hidden="true"><HomeArt /></div>
+            </div>
+            <div class="uh-title-row">
+                <div><p class="uh-kicker">The catalogue</p><h2>Explore listings</h2><p>@Catalog.Count @(Catalog.Count == 1 ? "listing" : "listings")</p></div>
+                <button type="button" class="uh-button secondary" @onclick="() => ShowFilters = !ShowFilters" aria-expanded="@ShowFilters">@(ShowFilters ? "Hide filters" : "Filters")</button>
+            </div>
+            @if (ShowFilters)
+            {
+                <form class="uh-panel uh-filters" @onsubmit="() => Run(LoadBrowse)" @onsubmit:preventDefault>
+                    <label>City <input @bind="City" @bind:event="oninput" placeholder="e.g. Horsens" /></label>
+                    <label>Min. rent (DKK) <input type="number" step=".01" min="0" @bind="MinRent" @bind:event="oninput" /></label>
+                    <label>Max. rent (DKK) <input type="number" step=".01" min="0" @bind="MaxRent" @bind:event="oninput" /></label>
+                    <label>Min. size (m²) <input type="number" min="0" @bind="MinSize" @bind:event="oninput" /></label>
+                    <label>Available on <input type="date" value="@Date" @onchange="e => Date = e.Value?.ToString() ?? string.Empty" /></label>
+                    <label>Furnishing <select @bind="Furnished"><option value="">Any</option><option value="true">Furnished</option><option value="false">Unfurnished</option></select></label>
+                    <button type="button" class="uh-button secondary" @onclick="ResetFilters" disabled="@Busy">Clear</button>
+                    <button type="submit" class="uh-button" disabled="@Busy">Apply filters</button>
+                </form>
+            }
+            @if (Catalog.Count == 0 && !Busy) { <p class="uh-empty">No listings match. Clear or change your filters to see more homes.</p> }
+            <div class="uh-grid catalog">
+                @foreach (var item in Catalog.OfType<JsonNode>())
+                {
+                    <article class="uh-card" @key='S(item, "id")'>
+                        <div class='@(IsBuilding(item) ? "uh-card-art" : "uh-card-art apartment")' aria-hidden="true"><HomeArt Apartment="@(!IsBuilding(item))" /></div>
+                        <div class="uh-card-body">
+                            <p class="uh-kicker">@Kind(item) · @S(item, "city")</p><h3>@S(item, "name")</h3>
+                            <p><span class="uh-money">From @Money(ListingRent(item))</span> per month</p>
+                            <div class="uh-actions">
+                                <span class='@(ListingStatus(item) == "Available periods" ? "uh-badge" : "uh-badge dim")'>@ListingStatus(item)</span>
+                                <button type="button" class="uh-button small secondary" @onclick='() => SelectListing(S(item, "id"))' disabled="@Busy">View details</button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        @if (Screen == "details" && SelectedListing is not null)
+        {
+            <button type="button" class="uh-button small secondary uh-back" @onclick='() => Navigate("browse")'>← Browse listings</button>
+            <div class="uh-title-row">
+                <div><p class="uh-kicker">@Kind(SelectedListing) · @S(SelectedListing, "city")</p><h1>@S(SelectedListing, "name")</h1><p>@S(SelectedListing, "address")</p></div>
+                @if (Session.IsTenant)
+                {
+                    <button type="button" class="uh-button secondary" @onclick='() => SaveItem(S(SelectedListing, "id"))' disabled="@Busy">Save @Kind(SelectedListing).ToLowerInvariant()</button>
+                }
+            </div>
+            <div class="uh-details-columns">
+                <section class="uh-panel uh-stack" aria-label="About this listing">
+                    <div>
+                        <h3>About this @Kind(SelectedListing).ToLowerInvariant()</h3>
+                        @if (string.IsNullOrWhiteSpace(S(SelectedListing, "englishDescription")))
+                        {
+                            <p class="uh-help">English description unavailable. Original description:</p><p class="uh-note">@S(SelectedListing, "description")</p>
+                        }
+                        else
+                        {
+                            <p class="uh-note">@S(SelectedListing, "englishDescription")</p>
+                        }
+                    </div>
+                    @foreach (var unit in Items(SelectedListing, "units"))
+                    {
+                        <div class="uh-list-row" @key='S(unit, "id")'>
+                            <div class="uh-row-head">
+                                <div><h3>@S(unit, "name")</h3><span class="uh-muted">@Int(unit, "size") m² · @(B(unit, "furnished") ? "Furnished" : "Unfurnished")</span></div>
+                                <button type="button" class="uh-button small secondary" @onclick="() => UseUnit(unit)">See rental periods</button>
+                            </div>
+                            <dl class="uh-keyvals uh-space-top">
+                                <div><dt>Rent</dt><dd>@Money(Int(unit, "rent"))</dd></div>
+                                <div><dt>Fixed utilities</dt><dd>@Money(Int(unit, "utilities"))</dd></div>
+                                <div><dt>Monthly total</dt><dd>@Money(Int(unit, "rent") + Int(unit, "utilities"))</dd></div>
+                                <div><dt>Deposit</dt><dd>@Money(Int(unit, "deposit"))</dd></div>
+                            </dl>
+                        </div>
+                    }
+                </section>
+                <section class="uh-panel uh-stack" aria-label="Rental periods">
+                    <h3>Rental periods</h3>
+                    @if (SelectedUnit is null)
+                    {
+                        <p class="uh-empty">Select a room or apartment to see its offered periods.</p>
+                    }
+                    else
+                    {
+                        <div class="uh-row-head">
+                            <strong>@S(SelectedUnit, "name")</strong>
+                            @if (Session.IsTenant && IsBuilding(SelectedListing))
+                            {
+                                <button type="button" class="uh-button small secondary" @onclick='() => SaveItem(S(SelectedUnit, "id"), true)' disabled="@Busy">Save room</button>
+                            }
+                        </div>
+                        @if (Arr(SelectedUnit, "periods").Count == 0) { <p class="uh-empty">This unit has no offered rental periods.</p> }
+                        @foreach (var period in Items(SelectedUnit, "periods"))
+                        {
+                            <div class="uh-list-row uh-row-head" @key='S(period, "id")'>
+                                <div><strong>@S(period, "start") – @S(period, "end")</strong><br/><span class='@(B(period, "available") ? "uh-badge" : "uh-badge dim")'>@(B(period, "available") ? "Available" : "Unavailable")</span></div>
+                                @if (B(period, "available") && Session.IsTenant)
+                                {
+                                    <button type="button" class="uh-button small" @onclick='() => RequestQuote(S(period, "id"))' disabled="@Busy">Review contract</button>
+                                }
+                            </div>
+                        }
+                        @if (!Session.SignedIn) { <button type="button" class="uh-button secondary" @onclick='() => AuthScreen("signin")'>Sign in to rent or save</button> }
+                    }
+                </section>
+            </div>
+            @if (ChosenQuote is not null)
+            {
+                <section class="uh-panel uh-stack uh-space-top" aria-label="Review rental contract">
+                    <div class="uh-contract"><p class="uh-kicker">Rental agreement</p><h3>Review and accept your contract</h3><p class="uh-note">@S(ChosenQuote, "contract")</p></div>
+                    <dl class="uh-keyvals">
+                        <div><dt>First-month rent</dt><dd>@Money(Int(ChosenQuote, "rent"))</dd></div>
+                        <div><dt>Fixed utilities</dt><dd>@Money(Int(ChosenQuote, "utilities"))</dd></div>
+                        <div><dt>Deposit</dt><dd>@Money(Int(ChosenQuote, "deposit"))</dd></div>
+                        <div><dt>First payment</dt><dd>@Money(Int(ChosenQuote, "firstPayment"))</dd></div>
+                    </dl>
+                    <form class="uh-form" @onsubmit="Book" @onsubmit:preventDefault>
+                        <label class="check"><input type="checkbox" @bind="Approved" /> I accept the rental contract.</label>
+                        @if (Approved) { <label class="check"><input type="checkbox" @bind="PaymentConfirm" /> I confirm this simulated payment. No money will move.</label> }
+                        <div class="uh-actions"><button type="submit" class="uh-button" disabled='@(Busy || !Approved || !PaymentConfirm)'>Pay and confirm rental</button><button type="button" class="uh-button secondary" @onclick="() => ChosenQuote = null">Cancel</button></div>
+                    </form>
+                </section>
+            }
+        }
+        @if (Screen is "signin" or "register")
+        {
+            <div class="uh-auth uh-panel">
+                <div class="uh-title-row"><div><p class="uh-kicker">Your UniHome account</p><h1>@(Screen == "register" ? "Create account" : "Sign in")</h1></div></div>
+                <form class="uh-form" @onsubmit="Authenticate" @onsubmit:preventDefault>
+                    <label>Account role <select @bind="Role"><option value="TENANT">Tenant</option><option value="LANDLORD">Landlord</option></select></label>
+                    @if (Screen == "register") { <label>Name <input @bind="Name" @bind:event="oninput" required maxlength="120" autocomplete="name" /></label> }
+                    <label>Email <input type="email" @bind="Email" @bind:event="oninput" required maxlength="200" autocomplete="username" /></label>
+                    <label>Password <input type="password" @bind="Password" @bind:event="oninput" required autocomplete='@(Screen == "register" ? "new-password" : "current-password")' /></label>
+                    <button type="submit" class="uh-button" disabled="@Busy">@(Screen == "register" ? "Create account" : "Sign in")</button>
+                </form>
+                <div class="uh-auth-foot">
+                    @if (Screen == "signin")
+                    {
+                        <span>New to UniHome? <button type="button" class="uh-text-button" @onclick='() => AuthScreen("register")'>Create an account</button></span>
+                        <p class="uh-help">Use <code>tenant@example.test</code> or <code>landlord@example.test</code> with <code>Example123!</code>.</p>
+                    }
+                    else
+                    {
+                        <span>Already registered? <button type="button" class="uh-text-button" @onclick='() => AuthScreen("signin")'>Sign in</button></span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (Screen == "rentals")
+        {
+            <div class="uh-title-row">
+                <div><p class="uh-kicker">@Nice(Session.Role) workspace</p><h1>@(Session.IsLandlord ? "Tenancies" : "My rentals")</h1><p>Contracts, monthly rent, utilities and payment status.</p></div>
+                <button type="button" class="uh-button secondary" @onclick='() => Run(() => LoadRentals(S(SelectedRental, "id")))' disabled="@Busy">Refresh</button>
+            </div>
+            @if (Rentals.Count == 0) { <p class="uh-empty">No rentals to show yet.</p> }
+            <div class="uh-stack">
+                @foreach (var rental in Rentals.OfType<JsonNode>())
+                {
+                    <section class="uh-panel" @key='S(rental, "id")'>
+                        <div class="uh-row-head">
+                            <div><p class="uh-kicker">@Nice(S(rental, "status"))</p><h3>@RentalTitle(rental)</h3><span class="uh-muted">@S(rental, "start") – @S(rental, "end") · @(Session.IsTenant ? S(rental, "landlordName") : S(rental, "tenantName"))</span></div>
+                            <div class="uh-actions">
+                                <button type="button" class="uh-button small secondary" @onclick="() => ChooseRental(rental)">View contract and payments</button>
+                                <button type="button" class="uh-button small secondary" @onclick="() => OpenConversation(rental)" disabled="@Busy">@(Session.IsTenant ? "Message landlord" : "Message tenant")</button>
+                                @if (Session.IsTenant) { <button type="button" class="uh-button small secondary" @onclick="() => OpenConversation(rental, true)" disabled="@Busy">Report a problem</button> }
+                            </div>
+                        </div>
+                        @if (S(SelectedRental, "id") == S(rental, "id"))
+                        {
+                            <div class="uh-stack uh-space-top">
+                                <dl class="uh-keyvals">
+                                    <div><dt>Monthly rent</dt><dd>@Money(Int(rental, "rent"))</dd></div>
+                                    <div><dt>Fixed utilities</dt><dd>@Money(Int(rental, "utilities"))</dd></div>
+                                    <div><dt>Monthly total</dt><dd>@Money(Int(rental, "rent") + Int(rental, "utilities"))</dd></div>
+                                    <div><dt>Deposit · @Nice(S(rental, "depositStatus"))</dt><dd>@Money(Int(rental, "deposit"))</dd></div>
+                                </dl>
+                                <details class="uh-contract"><summary>Rental contract</summary><p class="uh-note uh-space-top">@S(rental, "contract")</p></details>
+                                <div>
+                                    <h3>Payment schedule</h3>
+                                    @if (Arr(rental, "invoices").Count == 0) { <p class="uh-empty">No invoices are recorded.</p> }
+                                    else
+                                    {
+                                        <div class="uh-table-wrap"><table class="uh-table">
+                                            <thead><tr><th scope="col">Billing period</th><th scope="col">Due date</th><th scope="col">Amount</th><th scope="col">Status</th>@if(Session.IsTenant){<th scope="col"><span class="visually-hidden">Payment action</span></th>}</tr></thead>
+                                            <tbody>
+                                                @foreach (var invoice in Items(rental, "invoices"))
+                                                {
+                                                    string status = S(invoice, "status");
+                                                    <tr @key='S(invoice, "id")'>
+                                                        <td>@S(invoice, "start") – @S(invoice, "end")</td><td>@S(invoice, "due")</td><td>@Money(Int(invoice, "amount"))</td>
+                                                        <td><span class='@(status == "OVERDUE" ? "uh-badge red" : "uh-badge")'>@Nice(status)</span></td>
+                                                        @if (Session.IsTenant) { <td>@if (CanPay(invoice)){<button type="button" class="uh-button small" @onclick="() => { TargetInvoice = invoice; PaymentConfirm = false; }">Simulate payment</button>}</td> }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table></div>
+                                    }
+                                </div>
+                                @if (TargetInvoice is not null && Session.IsTenant)
+                                {
+                                    <form class="uh-panel uh-form" aria-label="Confirm simulated payment" @onsubmit="Pay" @onsubmit:preventDefault>
+                                        <h3>Confirm simulated payment</h3>
+                                        <p class="uh-note">Rent @Money(Int(TargetInvoice, "rent")), utilities @Money(Int(TargetInvoice, "utilities")), deposit @Money(Int(TargetInvoice, "deposit")). Total: <strong>@Money(Int(TargetInvoice, "amount"))</strong>.</p>
+                                        <label class="check"><input type="checkbox" @bind="PaymentConfirm" /> Confirm this simulation. No money will move.</label>
+                                        <div class="uh-actions"><button type="submit" class="uh-button" disabled='@(Busy || !PaymentConfirm)'>Confirm payment</button><button type="button" class="uh-button secondary" @onclick="() => TargetInvoice = null">Back</button></div>
+                                    </form>
+                                }
+                                @if (Session.IsTenant && CanCancel(rental))
+                                {
+                                    <div><button type="button" class="uh-button small danger" @onclick="() => ShowCancellation = !ShowCancellation">Cancel rental with notice</button></div>
+                                    @if (ShowCancellation)
+                                    {
+                                        <form class="uh-panel uh-form" @onsubmit="CancelRental" @onsubmit:preventDefault aria-label="Cancel rental with notice">
+                                            <h3>Choose your new end date</h3>
+                                            <p class="uh-help">Give at least two calendar months' notice. Rent and fixed utilities are due through the effective end. The final bill is prorated and the deposit is marked refunded when the rental ends.</p>
+                                            <label>Effective end date <input type="date" required value="@EndDate" @onchange="e => EndDate = e.Value?.ToString() ?? string.Empty" /></label>
+                                            <div class="uh-actions"><button type="submit" class="uh-button danger" disabled="@Busy">Confirm notice</button><button type="button" class="uh-button secondary" @onclick="() => ShowCancellation = false">Keep rental</button></div>
+                                        </form>
+                                    }
+                                }
+                            </div>
+                        }
+                    </section>
+                }
+            </div>
+        }
+        @if (Screen == "conversation" && SelectedRental is not null)
+        {
+            <button type="button" class="uh-button small secondary uh-back" @onclick='() => Navigate("rentals")'>← @(Session.IsTenant ? "My rentals" : "Tenancies")</button>
+            <div class="uh-title-row"><div><p class="uh-kicker">Private conversation</p><h1>@(Session.IsTenant ? S(SelectedRental, "landlordName") : S(SelectedRental, "tenantName"))</h1><p>@RentalTitle(SelectedRental)</p></div></div>
+            <section class="uh-panel uh-stack">
+                @if (Messages.Count == 0) { <p class="uh-empty">No messages in this conversation yet.</p> }
+                @foreach (var message in Messages.OfType<JsonNode>())
+                {
+                    <article class='@(S(message, "senderName") == Session.Name ? "uh-message self" : "uh-message")' @key='S(message, "id")'>
+                        <strong>@S(message, "senderName")</strong>
+                        @if (B(message, "problem")) { <span class="uh-badge dim">Problem reported</span> }
+                        <span class="uh-muted">@S(message, "createdAt")</span><p>@S(message, "text")</p>
+                    </article>
+                }
+                <form class="uh-form" @onsubmit="SendMessage" @onsubmit:preventDefault>
+                    <label>Message <textarea @bind="Message" @bind:event="oninput" required maxlength="5000" placeholder="Write a message…"></textarea></label>
+                    @if (Session.IsTenant) { <label class="check"><input type="checkbox" @bind="IsProblem" /> This message reports a problem with the rental.</label> }
+                    <div class="uh-actions"><button type="submit" class="uh-button" disabled="@Busy">Send message</button><button type="button" class="uh-button secondary" @onclick="() => OpenConversation(SelectedRental, IsProblem)" disabled="@Busy">Refresh messages</button></div>
+                </form>
+            </section>
+        }
+        @if (Screen == "saved")
+        {
+            <div class="uh-title-row"><div><p class="uh-kicker">Tenant workspace</p><h1>Saved listings</h1><p>Keep an eye on your favourite rooms, buildings and apartments.</p></div></div>
+            @if (SavedItems.Count == 0) { <p class="uh-empty">You have not saved anything yet.</p> }
+            <div class="uh-grid">
+                @foreach (var item in SavedItems.OfType<JsonNode>())
+                {
+                    <article class="uh-panel" @key='S(item, "listingId") + ":" + S(item, "unitId")'>
+                        <span class='@(B(item, "available") ? "uh-badge" : "uh-badge dim")'>@(B(item, "available") ? "Available" : "Unavailable")</span><h3>@S(item, "name")</h3>
+                        <div class="uh-actions"><button type="button" class="uh-button small secondary" @onclick='() => SelectListing(S(item, "listingId"), S(item, "unitId"))' disabled="@Busy">View listing</button><button type="button" class="uh-button small secondary" @onclick="() => UnsaveItem(item)" disabled="@Busy">Unsave</button></div>
+                    </article>
+                }
+            </div>
+        }
+        @if (Screen == "notifications")
+        {
+            <div class="uh-title-row"><div><p class="uh-kicker">Tenant workspace</p><h1>Notifications</h1><p>Availability changes for the listings and rooms you saved.</p></div>
+                <button type="button" class="uh-button secondary" @onclick='() => Navigate("notifications")' disabled="@Busy">Refresh</button></div>
+            @if (Notifications.Count == 0) { <p class="uh-empty">There are no availability notifications yet.</p> }
+            <div class="uh-stack">
+                @foreach (var item in Notifications.OfType<JsonNode>())
+                {
+                    <article class="uh-panel" @key='S(item, "id")'>
+                        <div class="uh-row-head">
+                            <div><span class='@(B(item, "read") ? "uh-badge dim" : "uh-badge")'>@(B(item, "read") ? "Read" : "New")</span><h3>@S(item, "name") became available</h3><span class="uh-muted">@S(item, "createdAt")</span></div>
+                            <button type="button" class="uh-button small secondary" @onclick="() => ReadNotice(item)" disabled="@Busy">Open notification</button>
+                        </div>
+                        @if (S(SelectedNotification, "id") == S(item, "id"))
+                        {
+                            <p class="uh-help uh-space-top">Availability may have changed. Open the listing for current periods.</p>
+                            <button type="button" class="uh-button small uh-space-top" @onclick='() => SelectListing(S(item, "listingId"), S(item, "unitId"))' disabled="@Busy">View current availability</button>
+                        }
+                    </article>
+                }
+            </div>
+        }
+        @if (Screen == "feed")
+        {
+            <div class="uh-title-row"><div><p class="uh-kicker">@Nice(Session.Role) workspace</p><h1>Building feed</h1><p>Announcements from landlords to current building residents.</p></div></div>
+            <section class="uh-panel uh-stack">
+                @if (Session.IsLandlord)
+                {
+                    @foreach (var building in MyListings.OfType<JsonNode>().Where(IsBuilding))
+                    { <button type="button" class="uh-button secondary" @onclick="() => OpenFeed(building, false)" disabled="@Busy">@S(building, "name")</button> }
+                    @if (!MyListings.OfType<JsonNode>().Any(IsBuilding)) { <p class="uh-empty">No building listings. Standalone apartments do not have a feed.</p> }
+                }
+                else
+                {
+                    var buildings = Rentals.OfType<JsonNode>().Where(IsActive).Where(x => S(x, "listingType") == "BUILDING").DistinctBy(x => S(x, "listingId")).ToList();
+                    @foreach (var building in buildings)
+                    { <button type="button" class="uh-button secondary" @onclick="() => OpenFeed(building, true)" disabled="@Busy">@S(building, "listingName")</button> }
+                    @if (buildings.Count == 0) { <p class="uh-empty">No active rentals with a building feed.</p> }
+                }
+            </section>
+            @if (SelectedFeed is not null)
+            {
+                <section class="uh-panel uh-stack uh-space-top">
+                    <div class="uh-row-head">
+                        <h3>@S(SelectedFeed, Session.IsTenant ? "listingName" : "name")</h3>
+                        @if (Session.IsLandlord) { <button type="button" class="uh-button small" @onclick="() => ShowAnnouncementForm = !ShowAnnouncementForm">Create announcement</button> }
+                    </div>
+                    @if (ShowAnnouncementForm && Session.IsLandlord)
+                    {
+                        <form class="uh-form" @onsubmit="PublishAnnouncement" @onsubmit:preventDefault>
+                            <label>Title <input @bind="AnnouncementTitle" @bind:event="oninput" required maxlength="160" /></label>
+                            <label>Announcement <textarea @bind="AnnouncementText" @bind:event="oninput" required maxlength="5000"></textarea></label>
+                            <div class="uh-actions"><button type="submit" class="uh-button" disabled="@Busy">Publish announcement</button><button type="button" class="uh-button secondary" @onclick="() => ShowAnnouncementForm = false">Cancel</button></div>
+                        </form>
+                    }
+                    @if (FeedItems.Count == 0) { <p class="uh-empty">No announcements for this building yet.</p> }
+                    @foreach (var item in FeedItems.OfType<JsonNode>())
+                    {
+                        <details class="uh-contract" @key='S(item, "id")'><summary><strong>@S(item, "title")</strong> <span class="uh-muted">@S(item, "createdAt")</span></summary><p class="uh-note uh-space-top">@S(item, "text")</p></details>
+                    }
+                </section>
+            }
+        }
+
+        @if (Screen == "manage")
+        {
+            <div class="uh-title-row">
+                <div><p class="uh-kicker">Landlord workspace</p><h1>My listings</h1><p>Publish apartments or buildings, manage rooms and offer rental periods.</p></div>
+                <button type="button" class="uh-button" @onclick="StartListing">Create listing</button>
+            </div>
+            @if (EditMode == "create" || EditMode == "listing")
+            {
+                <form class="uh-panel uh-form" @onsubmit="SaveListing" @onsubmit:preventDefault>
+                    <h3>@(EditMode == "create" ? "Publish a new listing" : "Edit listing details")</h3>
+                    <div class="uh-form-grid">
+                        @if (EditMode == "create")
+                        {
+                            <label>Property type <select @bind="Draft.Type"><option value="APARTMENT">Standalone apartment</option><option value="BUILDING">Building with rooms</option></select></label>
+                        }
+                        <label>Listing name <input @bind="Draft.Name" @bind:event="oninput" required maxlength="120" /></label>
+                        <label>Address in Denmark <input @bind="Draft.Address" @bind:event="oninput" required maxlength="240" /></label>
+                        <label>City <input @bind="Draft.City" @bind:event="oninput" required maxlength="120" /></label>
+                        <label class="span">Description <textarea @bind="Draft.Description" @bind:event="oninput" required maxlength="5000"></textarea></label>
+                        <label class="span">English description (optional) <textarea @bind="Draft.EnglishDescription" @bind:event="oninput" maxlength="5000"></textarea></label>
+                    </div>
+                    @if (EditMode == "create")
+                    {
+                        @foreach (var unit in (Draft.Type == "BUILDING" ? Draft.Units : Draft.Units.Take(1)))
+                        {
+                            <fieldset class="uh-panel uh-form" @key="unit">
+                                <legend>@(Draft.Type == "BUILDING" ? $"Room {Draft.Units.IndexOf(unit) + 1}" : "Apartment details")</legend>
+                                @UnitForm(unit)
+                                @foreach (var period in unit.Periods)
+                                {
+                                    <div class="uh-form-grid" @key="period">
+                                        <label>Period start <input type="date" required value="@period.Start" @onchange="e => period.Start = e.Value?.ToString() ?? string.Empty" /></label>
+                                        <label>Period end <input type="date" required value="@period.End" @onchange="e => period.End = e.Value?.ToString() ?? string.Empty" /></label>
+                                        @if (unit.Periods.Count > 1) { <button type="button" class="uh-button small secondary" @onclick="() => unit.Periods.Remove(period)">Remove period draft</button> }
+                                    </div>
+                                }
+                                <div class="uh-actions">
+                                    <button type="button" class="uh-button small secondary" @onclick="() => unit.Periods.Add(new())">Add a rental period</button>
+                                    @if (Draft.Type == "BUILDING" && Draft.Units.Count > 1) { <button type="button" class="uh-button small secondary" @onclick="() => Draft.Units.Remove(unit)">Remove room draft</button> }
+                                </div>
+                            </fieldset>
+                        }
+                        @if (Draft.Type == "BUILDING") { <div><button type="button" class="uh-button small secondary" @onclick="() => Draft.Units.Add(new())">Add another room</button></div> }
+                    }
+                    <div class="uh-actions"><button type="submit" class="uh-button" disabled="@Busy">@(EditMode == "create" ? "Publish listing" : "Save listing details")</button><button type="button" class="uh-button secondary" @onclick="() => EditMode = string.Empty">Cancel</button></div>
+                </form>
+            }
+            else
+            {
+                <div class="uh-details-columns">
+                    <section class="uh-panel uh-stack" aria-label="Owned listings">
+                        <h3>Published properties</h3>
+                        @if (MyListings.Count == 0) { <p class="uh-empty">You have no listings yet.</p> }
+                        @foreach (var listing in MyListings.OfType<JsonNode>())
+                        {
+                            <div class="uh-row-head uh-list-row" @key='S(listing, "id")'>
+                                <div><strong>@S(listing, "name")</strong><br/><span class="uh-muted">@Kind(listing) · @S(listing, "city")</span></div>
+                                <button type="button" class="uh-button small secondary" @onclick="() => ManageListing(listing)">Manage listing</button>
+                            </div>
+                        }
+                    </section>
+                    <section class="uh-panel uh-stack" aria-label="Listing management">
+                        @if (SelectedListing is null)
+                        {
+                            <p class="uh-empty">Choose a property to edit details, view occupancy, or manage its rental periods.</p>
+                        }
+                        else
+                        {
+                            <div class="uh-row-head">
+                                <div><h3>@S(SelectedListing, "name")</h3><span class="uh-muted">@S(SelectedListing, "address") · @S(SelectedListing, "city")</span></div>
+                                <div class="uh-actions">
+                                    <button type="button" class="uh-button small secondary" @onclick='() => EditMode = "listing"'>Edit listing details</button>
+                                    <button type="button" class="uh-button small danger" @onclick='() => AskRemove("remove-listing", S(SelectedListing, "id"))'>Withdraw listing</button>
+                                </div>
+                            </div>
+                            @if (ConfirmOperation.Length > 0)
+                            {
+                                <div class="uh-alert" role="group" aria-label="Confirm withdrawal"><p>Remove this offer from public listings? Existing contracts and payment records are preserved.</p><div class="uh-actions"><button type="button" class="uh-button danger small" @onclick="Remove" disabled="@Busy">Confirm removal</button><button type="button" class="uh-button small secondary" @onclick="CloseConfirmation">Keep it</button></div></div>
+                            }
+                            @if (EditMode == "unit")
+                            {
+                                <form class="uh-form" @onsubmit="SaveUnit" @onsubmit:preventDefault>
+                                    <h3>@(Unit.Id.Length == 0 ? "Add a room" : "Edit unit details")</h3>
+                                    @UnitForm(Unit)
+                                    <div class="uh-actions"><button type="submit" class="uh-button" disabled="@Busy">Save room details</button><button type="button" class="uh-button secondary" @onclick="() => EditMode = string.Empty">Cancel</button></div>
+                                </form>
+                            }
+                            @if (EditMode == "period")
+                            {
+                                <form class="uh-form" @onsubmit="SavePeriod" @onsubmit:preventDefault>
+                                    <h3>@(Period.Id.Length == 0 ? "Add a rental period" : "Edit rental period")</h3>
+                                    <label>Period start <input required type="date" value="@Period.Start" @onchange="e => Period.Start = e.Value?.ToString() ?? string.Empty" /></label>
+                                    <label>Period end <input required type="date" value="@Period.End" @onchange="e => Period.End = e.Value?.ToString() ?? string.Empty" /></label>
+                                    <div class="uh-actions"><button type="submit" class="uh-button" disabled="@Busy">Save rental period</button><button type="button" class="uh-button secondary" @onclick="() => EditMode = string.Empty">Cancel</button></div>
+                                </form>
+                            }
+                            @foreach (var unit in Items(SelectedListing, "units"))
+                            {
+                                var occupied = Rentals.OfType<JsonNode>().FirstOrDefault(r => S(r, "unitId") == S(unit, "id") && IsActive(r));
+                                <div class="uh-list-row" @key='S(unit, "id")'>
+                                    <div class="uh-row-head">
+                                        <div><h3>@S(unit, "name")</h3><span class="uh-muted">@Money(Int(unit, "rent") + Int(unit, "utilities")) monthly incl. utilities</span></div>
+                                        <span class='@(occupied is null ? "uh-badge dim" : "uh-badge")'>@(occupied is null ? "Vacant" : $"Occupied · {S(occupied, "tenantName")}")</span>
+                                    </div>
+                                    @if (occupied is not null)
+                                    {
+                                        <div class="uh-actions uh-space-top"><button type="button" class="uh-button small secondary" @onclick="() => ShowTenancy(occupied)">View tenant and rent status</button></div>
+                                    }
+                                    <div class="uh-actions uh-space-top">
+                                        <button type="button" class="uh-button small secondary" @onclick="() => StartUnit(unit)">Edit unit</button>
+                                        <button type="button" class="uh-button small secondary" @onclick="() => StartPeriod(unit, null)">Add rental period</button>
+                                        @if (IsBuilding(SelectedListing)) { <button type="button" class="uh-button small danger" @onclick='() => AskRemove("remove-unit", S(unit, "id"))'>Withdraw room</button> }
+                                    </div>
+                                    @if (Arr(unit, "periods").Count == 0) { <p class="uh-help uh-space-top">No rental periods yet.</p> }
+                                    @foreach (var period in Items(unit, "periods"))
+                                    {
+                                        <div class="uh-row-head uh-list-row" @key='S(period, "id")'>
+                                            <div><strong>@S(period, "start") – @S(period, "end")</strong><br/><span class="uh-muted">@(B(period, "available") ? "Available" : "Unavailable")</span></div>
+                                            <div class="uh-actions"><button type="button" class="uh-button small secondary" @onclick="() => StartPeriod(unit, period)">Edit period</button><button type="button" class="uh-button small danger" @onclick='() => AskRemove("remove-period", S(period, "id"))'>Remove period</button></div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (IsBuilding(SelectedListing)) { <div><button type="button" class="uh-button small" @onclick="() => StartUnit(null)">Add room</button></div> }
+                        }
+                    </section>
+                </div>
+            }
+        }
+    </main>
+    <footer class="uh-footer"><div class="uh-shell"><span>UniHome · SEP3 reference example</span><span>Local demo · All payments are simulated.</span></div></footer>
+</div>
+
+@code {
+    private void ShowTenancy(JsonNode rental)
+    {
+        ChooseRental(rental);
+        Screen = "rentals";
+    }
+
+    private RenderFragment UnitForm(UnitDraft unit) => @<div class="uh-form-grid">
+        <label>Unit name <input @bind="unit.Name" @bind:event="oninput" required maxlength="120" /></label>
+        <label>Size (m²) <input type="number" min="1" @bind="unit.Size" @bind:event="oninput" required /></label>
+        <label>Monthly rent (DKK) <input type="number" min="0" step=".01" @bind="unit.Rent" @bind:event="oninput" required /></label>
+        <label>Fixed monthly utilities (DKK) <input type="number" min="0" step=".01" @bind="unit.Utilities" @bind:event="oninput" required /></label>
+        <label>Deposit (DKK) <input type="number" min="0" step=".01" @bind="unit.Deposit" @bind:event="oninput" required /></label>
+        <label class="check"><input type="checkbox" @bind="unit.Furnished" /> Furnished</label>
+    </div>;
+}
+
+

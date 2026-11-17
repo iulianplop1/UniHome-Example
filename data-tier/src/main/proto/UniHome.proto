@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package unihome;
+option java_package = "dk.via.unihome.grpc";
+option java_multiple_files = true;
+
+service ListingService {
+  rpc CreateListing(CreateListingRequest) returns (Listing);
+  rpc GetListings(GetListingsRequest) returns (GetListingsResponse);
+  rpc GetListing(GetListingRequest) returns (Listing);
+}
+
+message Listing {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message CreateListingRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message GetListingsRequest {}
+
+message GetListingsResponse {
+  repeated Listing listings = 1;
+}
+
+message GetListingRequest {
+  string id = 1;
+}
+
+// Demo-only operations are isolated from the original proof-of-concept RPCs.
+service DemoService {
+  rpc Execute (DemoRequest) returns (DemoReply);
+}
+message DemoRequest {
+  string action = 1;
+  string bearer = 2;
+  string payload_json = 3;
+}
+message DemoReply {
+  int32 status = 1;
+  string payload_json = 2;
+}

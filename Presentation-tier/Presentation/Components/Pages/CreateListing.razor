@@ -1,0 +1,69 @@
+@page "/listings/create"
+@rendermode InteractiveServer
+@using Presentation.Models
+@using Presentation.Services
+@inject ListingService ListingService
+@inject NavigationManager Navigation
+
+<PageTitle>Create listing</PageTitle>
+
+<h1>Create listing</h1>
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+
+<EditForm Model="listing" OnSubmit="SaveAsync" FormName="create-listing" class="col-md-8 col-lg-6">
+
+    <div class="mb-3">
+        <label for="name" class="form-label">Name</label>
+        <InputText id="name" class="form-control" @bind-Value="listing.Name"/>
+    </div>
+
+    <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <InputTextArea id="description" class="form-control" rows="4" @bind-Value="listing.Description"/>
+    </div>
+
+    <button type="submit" class="btn btn-primary" disabled="@saving">
+        @(saving ? "Saving..." : "Create")
+    </button>
+    <a href="listings" class="btn btn-link">Cancel</a>
+</EditForm>
+
+@code {
+    private readonly CreateListingRequest listing = new();
+    private string? errorMessage;
+    private bool saving;
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(listing.Name) || string.IsNullOrWhiteSpace(listing.Description))
+        {
+            errorMessage = "Name and description are required";
+            return;
+        }
+        if (listing.Name.Length > 120)
+        {
+            errorMessage = "Name can be at most 120 characters";
+            return;
+        }
+
+        saving = true;
+        errorMessage = null;
+        try
+        {
+            await ListingService.CreateListingAsync(listing);
+            Navigation.NavigateTo("listings");
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage = "Cannot create listing, see if application tier is running";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

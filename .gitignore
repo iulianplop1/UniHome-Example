@@ -1,0 +1,38 @@
+# ---------- Java / Maven / Gradle ----------
+MavenProject/
+target/
+build/
+.gradle/
+*.class
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# ---------- .NET / Blazor ----------
+bin/
+obj/
+*.user
+*.suo
+appsettings.Development.local.json
+
+# ---------- IDEs ----------
+.idea/
+*.iml
+.vs/
+.vscode/
+*.swp
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+
+# ---------- Logs ----------
+*.log
+
+# ---------- Postman (local workspace files) ----------
+.postman/
+postman/
+
+.runtime/
+**/src/main/java/dk/via/unihome/grpc/
+__pycache__/
+verification-state.json

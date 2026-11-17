@@ -1,0 +1,19 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+@if (!string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0]))
+{
+    <div class="uh-legacy">
+        <a class="uh-wordmark" href="/">UniHome</a>
+        <span>SEP3 reference demo</span>
+    </div>
+}
+
+@Body
+
+<div id="blazor-error-ui" data-nosnippet>
+    The connection to UniHome was interrupted.
+    <a href="/" class="reload">Reload the demo</a>
+    <button type="button" class="dismiss" aria-label="Dismiss error">×</button>
+</div>
+
